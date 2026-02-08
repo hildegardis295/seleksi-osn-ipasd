@@ -6,7 +6,7 @@
     <title>Seleksi OSN IPA SDN 002 Sangatta Utara</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -23,7 +23,6 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // 1. KONFIGURASI FIREBASE
         const firebaseConfig = {
             apiKey: "AIzaSyDbLPrLuG_ZFGQkrrVMvFcUukG4j-3y18Y",
             authDomain: "ujian-osn.firebaseapp.com",
@@ -35,7 +34,6 @@
         };
 
         const appId = 'seleksi-osn-sdn002';
-
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
@@ -63,7 +61,6 @@
                 return () => unsubscribe();
             }, []);
 
-            // 2. BANK SOAL (50 SOAL)
             const questions = [
                 { id: 1, q: "Bagian tumbuhan yang berfungsi sebagai tempat utama terjadinya proses fotosintesis adalah...", options: ["A. Akar", "B. Batang", "C. Daun", "D. Bunga"], a: "C" },
                 { id: 2, q: "Hewan berikut yang memiliki alat perlindungan diri berupa cangkang yang sangat keras adalah...", options: ["A. Ular dan Buaya", "B. Siput dan Kura-kura", "C. Cumi-cumi dan Gurita", "D. Landak dan Kalajengking"], a: "B" },
@@ -117,7 +114,6 @@
                 { id: 50, q: "Lapisan atmosfer paling dekat dengan permukaan bumi adalah...", options: ["A. Stratosfer", "B. Mesosfer", "C. Troposfer", "D. Eksosfer"], a: "C" }
             ];
 
-            // 3. FUNGSI LOGIKA (SUBMIT & DOWNLOAD)
             const downloadExcel = () => {
                 if (dbLogs.length === 0) return alert("Belum ada data.");
                 const dataEksport = dbLogs.map(log => ({
@@ -140,7 +136,6 @@
                     const finalScore = Math.round((correct / questions.length) * 100);
                     setScore(finalScore);
 
-                    // Tetap simpan status LULUS/TIDAK LULUS ke database untuk Admin
                     await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('rekap_nilai').add({
                         userId: user.uid,
                         nama: name,
@@ -153,7 +148,6 @@
                     });
                     setScreen('result');
                 } catch (err) {
-                    alert("Koneksi gagal! Silakan screenshot hasil ini.");
                     setScreen('result');
                 } finally { setIsSubmitting(false); }
             }, [user, name, studentClass, phone, answers, appId]);
@@ -175,7 +169,6 @@
                 } else if (timeLeft === 0 && screen === 'exam') { handleSubmit(); }
             }, [screen, timeLeft, handleSubmit]);
 
-            // 4. UI SCREENS
             if (screen === 'welcome') return (
                 <div className="min-h-screen flex items-center justify-center p-4">
                     <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md border-b-8 border-emerald-600 animate-fade text-center">
@@ -254,7 +247,7 @@
                     <div className="w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-xl bg-emerald-100 text-emerald-600">
                         <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7" /></svg>
                     </div>
-                    {/* Tampilan Sesuai Request: Hanya Skor & Terimakasih */}
+                    
                     <h1 className="text-3xl font-black mb-1 text-slate-800 uppercase tracking-tighter">Terima Kasih!</h1>
                     <p className="text-emerald-600 font-bold mb-10 text-xs uppercase tracking-widest">Sudah mengikuti seleksi</p>
                     
@@ -272,7 +265,7 @@
                 <div className="min-h-screen bg-slate-100 p-4 sm:p-10 animate-fade">
                     <div className="max-w-6xl mx-auto bg-white rounded-[2.5rem] shadow-2xl overflow-hidden">
                         <div className="p-8 bg-slate-900 text-white flex flex-col sm:flex-row justify-between items-center gap-4">
-                            <div><h2 className="text-2xl font-black uppercase italic">Rekap Nilai</h2><p className="text-emerald-400 text-[10px] font-black uppercase">SDN 002 Sangatta Utara</p></div>
+                            <div><h2 className="text-2xl font-black uppercase italic">Rekap Nilai</h2><p className="text-emerald-400 text-[10px] font-black uppercase">Admin SDN 002 Sangatta Utara</p></div>
                             <div className="flex gap-3">
                                 <button onClick={downloadExcel} className="bg-emerald-500 px-6 py-3 rounded-xl font-black text-xs flex items-center gap-2 uppercase tracking-widest shadow-lg">Download Excel</button>
                                 <button onClick={()=>window.location.reload()} className="bg-red-500 px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest">Logout</button>
@@ -281,7 +274,7 @@
                         <div className="overflow-x-auto">
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase border-b tracking-widest">
-                                    <tr><th className="px-8 py-6">Nama</th><th className="px-8 py-6">Kelas</th><th className="px-8 py-6">No HP</th><th className="px-8 py-6 text-center">Skor</th><th className="px-8 py-6">Status</th><th className="px-8 py-6">Waktu</th></tr>
+                                    <tr><th className="px-8 py-6">Nama</th><th className="px-8 py-6">Kelas</th><th className="px-8 py-6">No HP</th><th className="px-8 py-6 text-center">Skor</th><th className="px-8 py-6 text-center">Status</th><th className="px-8 py-6">Waktu</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {dbLogs.map(log => (
@@ -290,8 +283,10 @@
                                             <td className="px-8 py-6 font-bold text-slate-500 text-xs">{log.kelas}</td>
                                             <td className="px-8 py-6 font-bold text-emerald-600 text-xs">{log.nomorHp}</td>
                                             <td className="px-8 py-6 text-center text-xl font-black">{log.skor}</td>
-                                            <td className="px-8 py-6">
-                                                <span className={`px-4 py-2 rounded-lg font-black text-[10px] tracking-widest ${log.skor >= 75 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{log.skor >= 75 ? 'LULUS' : 'GAGAL'}</span>
+                                            <td className="px-8 py-6 text-center">
+                                                <span className={`px-4 py-2 rounded-lg font-black text-[10px] tracking-widest ${log.skor >= 75 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                    {log.skor >= 75 ? 'LULUS' : 'TIDAK LULUS'}
+                                                </span>
                                             </td>
                                             <td className="px-8 py-6 text-[10px] font-bold text-slate-400">{log.waktu_teks}</td>
                                         </tr>
