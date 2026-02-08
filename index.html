@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seleksi OSN IPA SDN 002</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & Babel CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Firebase SDK (Compatibility Version) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .animate-fade { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-emerald-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Global variables provided by the environment
+        const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
+        const initialToken = window.__initial_auth_token;
+        const appId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'seleksi-osn-sdn002';
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        const { useState, useEffect, useCallback } = React;
+
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [screen, setScreen] = useState('welcome');
+            const [name, setName] = useState('');
+            const [studentClass, setStudentClass] = useState('');
+            const [phone, setPhone] = useState('');
+            const [answers, setAnswers] = useState({});
+            const [score, setScore] = useState(0);
+            const [timeLeft, setTimeLeft] = useState(3600);
+            const [dbLogs, setDbLogs] = useState([]);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [showConfirm, setShowConfirm] = useState(false);
+            const [adminPin, setAdminPin] = useState('');
+            const [isAdmin, setIsAdmin] = useState(false);
+
+            // Auth Effect - RULE 3: Auth before queries
+            useEffect(() => {
+                const initAuth = async () => {
+                    try {
+                        if (initialToken) {
+                            await auth.signInWithCustomToken(initialToken);
+                        } else {
+                            await auth.signInAnonymously();
+                        }
+                    } catch (err) {
+                        console.error("Auth Error:", err);
+                    }
+                };
+                initAuth();
+
+                const unsubscribe = auth.onAuthStateChanged((u) => {
+                    setUser(u);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            // Bank Soal
+            const questions = [
+                { id: 1, q: "Bagian tumbuhan yang berfungsi sebagai tempat utama terjadinya proses fotosintesis adalah...", options: ["A. Akar", "B. Batang", "C. Daun", "D. Bunga"], a: "C" },
+                { id: 2, q: "Hewan berikut yang memiliki alat perlindungan diri berupa cangkang yang sangat keras adalah...", options: ["A. Ular dan Buaya", "B. Siput dan Kura-kura", "C. Cumi-cumi dan Gurita", "D. Landak dan Kalajengking"], a: "B" },
+                { id: 3, q: "Urutan tahapan metamorfosis sempurna yang benar pada kupu-kupu adalah...", options: ["A. Telur - Larva - Pupa - Imago", "B. Telur - Nimfa - Pupa - Imago", "C. Telur - Larva - Belalang - Imago", "D. Telur - Pupa - Larva - Imago"], a: "A" },
+                { id: 4, q: "Fungsi utama dari bagian akar pada tumbuhan adalah...", options: ["A. Sebagai tempat pertukaran gas", "B. Menyerap air dan mineral dari dalam tanah", "C. Sebagai alat perkembangbiakan generatif", "D. Tempat utama menyimpan cadangan makanan"], a: "B" },
+                { id: 5, q: "Contoh penerapan gaya gesek yang memberikan keuntungan bagi manusia adalah...", options: ["A. Gesekan antara ban mobil dengan jalan yang sangat halus", "B. Gesekan antara gear sepeda yang berkarat", "C. Gesekan antara alas sepatu dengan lantai agar tidak licin", "D. Gesekan antara air dengan lambung kapal"], a: "C" },
+                { id: 6, q: "Proses penguapan air pada daun tumbuhan melalui mulut daun disebut...", options: ["A. Fotosintesis", "B. Respirasi", "C. Transpirasi", "D. Adaptasi"], a: "C" },
+                { id: 7, q: "Planet yang dijuluki sebagai planet merah adalah...", options: ["A. Merkurius", "B. Venus", "C. Mars", "D. Jupiter"], a: "C" },
+                { id: 8, q: "Bagian darah yang berfungsi untuk membekukan darah saat terjadi luka adalah...", options: ["A. Sel darah merah", "B. Sel darah putih", "C. Keping darah (Trombosit)", "D. Plasma darah"], a: "C" },
+                { id: 9, q: "Bunyi dapat merambat paling cepat melalui medium...", options: ["A. Ruang hampa", "B. Benda gas", "C. Benda cair", "D. Benda padat"], a: "D" },
+                { id: 10, q: "Hubungan antara dua makhluk hidup yang saling menguntungkan disebut simbiosis...", options: ["A. Parasitisme", "B. Komensalisme", "C. Mutualisme", "D. Amensalisme"], a: "C" },
+                { id: 11, q: "Alat pernapasan pada ikan adalah...", options: ["A. Paru-paru", "B. Insang", "C. Trakea", "D. Kulit"], a: "B" },
+                { id: 12, q: "Perubahan wujud benda dari gas menjadi cair disebut...", options: ["A. Membeku", "B. Mencair", "C. Mengembun", "D. Menyublim"], a: "C" },
+                { id: 13, q: "Sendi yang memungkinkan gerakan ke segala arah disebut...", options: ["A. Sendi Engsel", "B. Sendi Putar", "C. Sendi Peluru", "D. Sendi Pelana"], a: "C" },
+                { id: 14, q: "Bagian mata yang berfungsi mengatur jumlah cahaya yang masuk adalah...", options: ["A. Retina", "B. Lensa", "C. Pupil", "D. Sklera"], a: "C" },
+                { id: 15, q: "Gaya yang menyebabkan buah apel jatuh dari pohon ke tanah adalah...", options: ["A. Gaya Pegas", "B. Gaya Magnet", "C. Gaya Gravitasi", "D. Gaya Gesek"], a: "C" },
+                { id: 16, q: "Tumbuhan yang menyimpan cadangan makanan di dalam umbi akar adalah...", options: ["A. Padi", "B. Wortel", "C. Pisang", "D. Jagung"], a: "B" },
+                { id: 17, q: "Proses pencernaan makanan secara kimiawi pada manusia pertama kali terjadi di...", options: ["A. Kerongkongan", "B. Lambung", "C. Mulut", "D. Usus Halus"], a: "C" },
+                { id: 18, q: "Energi yang dihasilkan oleh matahari adalah...", options: ["A. Panas dan Gerak", "B. Cahaya dan Bunyi", "C. Panas dan Cahaya", "D. Listrik dan Magnet"], a: "C" },
+                { id: 19, q: "Kelompok hewan pemakan tumbuhan disebut...", options: ["A. Karnivora", "B. Herbivora", "C. Omnivora", "D. Insektivora"], a: "B" },
+                { id: 20, q: "Kincir angin memanfaatkan energi alternatif yang berasal dari...", options: ["A. Air", "B. Matahari", "C. Angin", "D. Panas Bumi"], a: "C" },
+                { id: 21, q: "Bagian telinga yang berfungsi untuk menjaga keseimbangan tubuh adalah...", options: ["A. Gendang telinga", "B. Saluran eustachius", "C. Tiga saluran setengah lingkaran", "D. Daun telinga"], a: "C" },
+                { id: 22, q: "Penyakit yang disebabkan oleh kekurangan vitamin C adalah...", options: ["A. Rakitis", "B. Anemia", "C. Sariawan", "D. Rabun Senja"], a: "C" },
+                { id: 23, q: "Benda yang tidak dapat ditembus oleh cahaya disebut...", options: ["A. Benda bening", "B. Benda transparan", "C. Benda gelap", "D. Benda mengkilap"], a: "C" },
+                { id: 24, q: "Perpindahan panas secara aliran melalui zat perantara cair atau gas disebut...", options: ["A. Konduksi", "B. Konveksi", "C. Radiasi", "D. Isolasi"], a: "B" },
+                { id: 25, q: "Bahan berikut yang termasuk isolator panas adalah...", options: ["A. Besi", "B. Aluminium", "C. Plastik", "D. Tembaga"], a: "C" },
+                { id: 26, q: "Fungsi dari bulu akar adalah...", options: ["A. Melindungi akar yang muda", "B. Mengangkut hasil fotosintesis", "C. Memperluas bidang penyerapan air", "D. Menyimpan cadangan makanan"], a: "C" },
+                { id: 27, q: "Jenis tanah yang paling baik untuk pertanian adalah tanah...", options: ["A. Pasir", "B. Liat", "C. Humus", "D. Kapur"], a: "C" },
+                { id: 28, q: "Urutan rantai makanan yang benar adalah...", options: ["A. Padi -> Katak -> Ular -> Belalang", "B. Padi -> Belalang -> Katak -> Ular", "C. Katak -> Padi -> Belalang -> Ular", "D. Ular -> Katak -> Belalang -> Padi"], a: "B" },
+                { id: 29, q: "Tindakan pelestarian hutan yang benar adalah...", options: ["A. Penebangan liar", "B. Pembakaran hutan", "C. Reboisasi", "D. Ladang berpindah"], a: "C" },
+                { id: 30, q: "Bunyi pantul yang terdengar hampir bersamaan dengan bunyi asli disebut...", options: ["A. Gema", "B. Gaung", "C. Nada", "D. Desah"], a: "B" },
+                { id: 31, q: "Zat yang memberikan warna hijau pada daun disebut...", options: ["A. Stomata", "B. Kambium", "C. Klorofil", "D. Floem"], a: "C" },
+                { id: 32, q: "Hewan yang berkembang biak dengan cara bertelur disebut...", options: ["A. Vivipar", "B. Ovovivipar", "C. Ovipar", "D. Fragmentasi"], a: "C" },
+                { id: 33, q: "Pencemaran udara paling banyak disebabkan oleh...", options: ["A. Limbah pabrik di sungai", "B. Sampah rumah tangga", "C. Asap kendaraan bermotor", "D. Suara bising musik"], a: "C" },
+                { id: 34, q: "Bagian jantung yang berfungsi memompa darah ke seluruh tubuh adalah...", options: ["A. Serambi Kanan", "B. Serambi Kiri", "C. Bilik Kiri", "D. Bilik Kanan"], a: "C" },
+                { id: 35, q: "Kacamata berlensa cekung digunakan oleh penderita...", options: ["A. Mata normal", "B. Rabun jauh (Miopi)", "C. Rabun dekat (Hipermetropi)", "D. Mata tua (Presbiopi)"], a: "B" },
+                { id: 36, q: "Sifat bayangan pada cermin datar adalah...", options: ["A. Nyata dan terbalik", "B. Semu dan tegak", "C. Lebih kecil dari benda", "D. Lebih besar dari benda"], a: "B" },
+                { id: 37, q: "Alat untuk mengukur besar gaya adalah...", options: ["A. Termometer", "B. Barometer", "C. Dinamometer", "D. Speedometer"], a: "C" },
+                { id: 38, q: "Contoh perubahan kimia adalah...", options: ["A. Es mencair", "B. Air menguap", "C. Kertas terbakar", "D. Gula larut dalam air"], a: "C" },
+                { id: 39, q: "Upaya pencegahan banjir di perkotaan adalah dengan...", options: ["A. Membuang sampah di selokan", "B. Membangun banyak gedung", "C. Membuat lubang biopori", "D. Menutup halaman dengan semen"], a: "C" },
+                { id: 40, q: "Bunga sempurna memiliki bagian-bagian utama berupa...", options: ["A. Akar dan batang", "B. Daun dan buah", "C. Putik dan benang sari", "D. Duri dan bulu"], a: "C" },
+                { id: 41, q: "Fungsi hemoglobin dalam sel darah merah adalah untuk mengikat...", options: ["A. Karbondioksida", "B. Sari makanan", "C. Oksigen", "D. Sisa metabolisme"], a: "C" },
+                { id: 42, q: "Hewan mamalia air yang bernapas dengan paru-paru adalah...", options: ["A. Hiu", "B. Paus", "C. Pari", "D. Kuda Laut"], a: "B" },
+                { id: 43, q: "Energi panas bumi disebut juga energi...", options: ["A. Biomassa", "B. Nuklir", "C. Geotermal", "D. Hidropower"], a: "C" },
+                { id: 44, q: "Tahapan pertumbuhan manusia setelah masa kanak-kanak adalah...", options: ["A. Bayi", "B. Lansia", "C. Remaja", "D. Dewasa"], a: "C" },
+                { id: 45, q: "Satuan suhu dalam SI (Sistem Internasional) adalah...", options: ["A. Celcius", "B. Fahrenheit", "C. Kelvin", "D. Reamur"], a: "C" },
+                { id: 46, q: "Benda yang dapat ditarik dengan sangat kuat oleh magnet disebut...", options: ["A. Diamagnetik", "B. Paramagnetik", "C. Feromagnetik", "D. Non-magnetik"], a: "C" },
+                { id: 47, q: "Objek yang menjadi pusat peredaran seluruh anggota tata surya kita adalah...", options: ["A. Bumi", "B. Bulan", "C. Matahari", "D. Planet Jupiter"], a: "C" },
+                { id: 48, q: "Burung memiliki kantong udara yang berfungsi untuk...", options: ["A. Mempercepat kepakan sayap", "B. Membantu pernapasan saat terbang", "C. Meningkatkan suhu tubuh", "D. Menjaga keseimbangan saat berjalan"], a: "B" },
+                { id: 49, q: "Kondisi penurunan kepadatan tulang sehingga menjadi rapuh disebut...", options: ["A. Rakitis", "B. Osteoporosis", "C. Lordosis", "D. Skoliosis"], a: "B" },
+                { id: 50, q: "Lapisan atmosfer paling dekat dengan permukaan bumi adalah...", options: ["A. Stratosfer", "B. Mesosfer", "C. Troposfer", "D. Eksosfer"], a: "C" }
+            ];
+
+            // Submit handler - RULE 1: Strict Paths
+            const handleSubmit = useCallback(async () => {
+                if (isSubmitting || !user) return;
+                setIsSubmitting(true);
+                try {
+                    let correctCount = 0;
+                    questions.forEach(q => { if (answers[q.id] === q.a) correctCount++; });
+                    const finalScore = Math.round((correctCount / questions.length) * 100);
+                    setScore(finalScore);
+
+                    // PUBLIC DATA PATH (Standard Rule 1)
+                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('rekap_nilai').add({
+                        userId: user.uid,
+                        nama: name,
+                        kelas: studentClass,
+                        nomorHp: phone,
+                        skor: finalScore,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        waktu_teks: new Date().toLocaleString('id-ID'),
+                        status: finalScore >= 75 ? "LULUS" : "TIDAK LULUS"
+                    });
+                    setScreen('result');
+                } catch (err) {
+                    console.error("Firestore Save Error:", err);
+                    setScreen('result'); // Tetap ke hasil meski db gagal
+                } finally {
+                    setIsSubmitting(false);
+                }
+            }, [user, name, studentClass, phone, answers, isSubmitting, appId]);
+
+            // Data listener for Admin - RULE 3: Auth Guarded
+            useEffect(() => {
+                if (!user || !isAdmin) return;
+                
+                // Using standard artifact path with error callback
+                const unsubscribe = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('rekap_nilai')
+                    .onSnapshot((snapshot) => {
+                        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        // Rule 2: Sorting in memory
+                        setDbLogs(data.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
+                    }, (error) => {
+                        console.error("Firestore Listen Error:", error);
+                    });
+                return () => unsubscribe();
+            }, [user, isAdmin, appId]);
+
+            // Timer logic
+            useEffect(() => {
+                if (screen === 'exam' && timeLeft > 0) {
+                    const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+                    return () => clearInterval(timer);
+                } else if (timeLeft === 0 && screen === 'exam') {
+                    handleSubmit();
+                }
+            }, [screen, timeLeft, handleSubmit]);
+
+            const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+
+            // --- UI RENDER LOGIC ---
+            if (screen === 'welcome') {
+                return (
+                    <div className="min-h-screen bg-emerald-50 flex items-center justify-center p-4">
+                        <div className="bg-white p-8 sm:p-12 rounded-[2.5rem] shadow-2xl w-full max-w-md border-b-8 border-emerald-600 animate-fade">
+                            <h1 className="text-3xl font-black text-slate-800 text-center uppercase tracking-tighter leading-tight mb-2 italic">Seleksi OSN IPA</h1>
+                            <p className="text-center text-emerald-600 font-bold text-xs uppercase tracking-widest mb-10">SDN 002 Sangatta Utara</p>
+                            <div className="space-y-4">
+                                <input value={name} onChange={e => setName(e.target.value)} placeholder="Nama Lengkap" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-emerald-500 outline-none font-bold" />
+                                <input value={studentClass} onChange={e => setStudentClass(e.target.value)} placeholder="Kelas (Contoh: 6A)" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-emerald-500 outline-none font-bold" />
+                                <input value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ''))} placeholder="Nomor HP" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-emerald-500 outline-none font-bold" />
+                                <button onClick={() => name && studentClass && phone ? setScreen('exam') : alert('Lengkapi data!')} className="w-full bg-emerald-600 text-white font-black py-5 rounded-2xl shadow-xl hover:bg-emerald-700 transition-all uppercase tracking-widest">Mulai Ujian</button>
+                                <button onClick={() => setScreen('admin_login')} className="w-full text-slate-400 font-bold text-[10px] uppercase tracking-widest pt-4 underline">Admin Panel</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (screen === 'admin_login') {
+                return (
+                    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
+                        <div className="bg-white p-10 rounded-3xl w-full max-w-sm text-center animate-fade">
+                            <h2 className="text-2xl font-black mb-8 text-slate-800 uppercase">Admin PIN</h2>
+                            <input type="password" placeholder="****" className="w-full p-4 bg-slate-100 rounded-xl text-center text-2xl font-black tracking-widest mb-4 outline-none" value={adminPin} onChange={e => setAdminPin(e.target.value)} />
+                            <button onClick={() => adminPin === '1234' ? (setIsAdmin(true), setScreen('admin_panel')) : alert('PIN Salah!')} className="w-full bg-emerald-600 text-white py-4 rounded-xl font-black">LOGIN</button>
+                            <button onClick={() => setScreen('welcome')} className="mt-4 text-slate-400 font-bold text-xs">KEMBALI</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (screen === 'exam') {
+                return (
+                    <div className="min-h-screen bg-slate-50 flex flex-col pb-40 animate-fade">
+                        <header className="sticky top-0 bg-white/80 backdrop-blur-md border-b p-4 px-6 flex justify-between items-center z-50">
+                            <div className={`px-4 py-2 rounded-xl text-white font-black text-xl ${timeLeft < 300 ? 'bg-red-500 animate-pulse' : 'bg-slate-900'}`}>{formatTime(timeLeft)}</div>
+                            <div className="text-right">
+                                <p className="text-xs font-black text-slate-400">{name}</p>
+                                <p className="text-sm font-black text-emerald-600">Progress: {Object.keys(answers).length}/50</p>
+                            </div>
+                        </header>
+                        <main className="max-w-3xl mx-auto w-full p-4 pt-10 space-y-8">
+                            {questions.map((q, idx) => (
+                                <div key={q.id} className="bg-white p-6 sm:p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
+                                    <div className="flex gap-4 mb-8">
+                                        <span className="w-12 h-12 flex-shrink-0 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center font-black text-xl">{idx + 1}</span>
+                                        <p className="font-bold text-lg text-slate-800 pt-2">{q.q}</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-3 sm:pl-16">
+                                        {q.options.map(opt => (
+                                            <button key={opt} onClick={() => setAnswers({...answers, [q.id]: opt[0]})}
+                                                className={`text-left p-5 rounded-2xl border-2 transition-all font-bold ${answers[q.id] === opt[0] ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-50 bg-slate-50 text-slate-600'}`}>
+                                                {opt}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </main>
+                        <footer className="fixed bottom-0 left-0 right-0 p-6 bg-white/95 backdrop-blur-md border-t flex justify-center z-50">
+                            <button onClick={() => setShowConfirm(true)} className="w-full max-w-lg bg-emerald-600 text-white font-black py-5 rounded-2xl shadow-xl text-lg uppercase">Kirim Jawaban</button>
+                        </footer>
+                        {showConfirm && (
+                            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-6">
+                                <div className="bg-white p-8 rounded-[2rem] max-w-sm w-full text-center">
+                                    <h3 className="font-black text-xl mb-4">Selesai Ujian?</h3>
+                                    <div className="flex gap-4">
+                                        <button onClick={() => setShowConfirm(false)} className="flex-1 p-4 bg-slate-100 rounded-xl font-bold">Batal</button>
+                                        <button onClick={handleSubmit} className="flex-1 p-4 bg-emerald-600 text-white rounded-xl font-black">Ya, Selesai</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {isSubmitting && <div className="fixed inset-0 bg-white/90 z-[100] flex items-center justify-center font-black animate-pulse uppercase text-xs">Menyimpan Nilai...</div>}
+                    </div>
+                );
+            }
+
+            if (screen === 'result') {
+                return (
+                    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center animate-fade">
+                        <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-xl ${score >= 75 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d={score >= 75 ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12"} /></svg>
+                        </div>
+                        <h1 className={`text-3xl font-black mb-1 ${score >= 75 ? 'text-green-600' : 'text-red-600'}`}>{score >= 75 ? 'LULUS SELEKSI!' : 'BELUM LULUS'}</h1>
+                        <p className="text-slate-400 font-bold mb-10 text-xs uppercase tracking-widest">{name} • {studentClass}</p>
+                        <div className="bg-emerald-50 p-12 rounded-[4rem] shadow-inner mb-10 border border-emerald-100 px-20">
+                            <div className="text-[8rem] font-black text-slate-900 leading-none tracking-tighter">{score}</div>
+                            <p className="text-[10px] font-black text-slate-400 mt-4 uppercase tracking-[0.5em]">Total Skor</p>
+                        </div>
+                        <button onClick={() => window.location.reload()} className="bg-slate-900 text-white px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-widest">Selesai & Keluar</button>
+                    </div>
+                );
+            }
+
+            if (screen === 'admin_panel') {
+                return (
+                    <div className="min-h-screen bg-slate-100 p-4 sm:p-10 animate-fade">
+                        <div className="max-w-6xl mx-auto bg-white rounded-[2.5rem] shadow-2xl overflow-hidden">
+                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
+                                <div><h2 className="text-2xl font-black uppercase italic">Rekap Nilai</h2><p className="text-emerald-400 text-[10px] font-black tracking-widest uppercase">Admin SDN 002</p></div>
+                                <button onClick={() => window.location.reload()} className="bg-red-500 px-6 py-3 rounded-xl font-black text-xs uppercase">Logout</button>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead><tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase border-b tracking-widest"><th className="px-8 py-6">Nama</th><th className="px-8 py-6">Kelas</th><th className="px-8 py-6 text-center">Skor</th><th className="px-8 py-6">Status</th><th className="px-8 py-6">Waktu</th></tr></thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {dbLogs.map(log => (
+                                            <tr key={log.id} className="hover:bg-emerald-50">
+                                                <td className="px-8 py-6 font-black text-slate-800 text-sm uppercase">{log.nama}</td>
+                                                <td className="px-8 py-6 font-bold text-slate-500 text-xs uppercase">{log.kelas}</td>
+                                                <td className="px-8 py-6 text-center text-xl font-black">{log.skor}</td>
+                                                <td className="px-8 py-6">
+                                                    <span className={`px-4 py-2 rounded-lg font-black text-[10px] tracking-widest ${log.skor >= 75 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{log.skor >= 75 ? 'LULUS' : 'TIDAK LULUS'}</span>
+                                                </td>
+                                                <td className="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase">{log.waktu_teks}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
