@@ -8,6 +8,7 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -22,7 +23,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- KONFIGURASI FIREBASE TERBARU ANDA ---
+        // 1. KONFIGURASI FIREBASE
         const firebaseConfig = {
             apiKey: "AIzaSyDbLPrLuG_ZFGQkrrVMvFcUukG4j-3y18Y",
             authDomain: "ujian-osn.firebaseapp.com",
@@ -35,7 +36,6 @@
 
         const appId = 'seleksi-osn-sdn002';
 
-        // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
@@ -57,24 +57,13 @@
             const [adminPin, setAdminPin] = useState('');
             const [isAdmin, setIsAdmin] = useState(false);
 
-            // Auth Effect
             useEffect(() => {
-                const initAuth = async () => {
-                    try {
-                        await auth.signInAnonymously();
-                    } catch (err) {
-                        console.error("Auth Error:", err);
-                    }
-                };
-                initAuth();
-
-                const unsubscribe = auth.onAuthStateChanged((u) => {
-                    setUser(u);
-                });
+                auth.signInAnonymously().catch(err => console.error(err));
+                const unsubscribe = auth.onAuthStateChanged((u) => setUser(u));
                 return () => unsubscribe();
             }, []);
 
-            // Bank Soal
+            // 2. BANK SOAL (50 SOAL LENGKAP)
             const questions = [
                 { id: 1, q: "Bagian tumbuhan yang berfungsi sebagai tempat utama terjadinya proses fotosintesis adalah...", options: ["A. Akar", "B. Batang", "C. Daun", "D. Bunga"], a: "C" },
                 { id: 2, q: "Hewan berikut yang memiliki alat perlindungan diri berupa cangkang yang sangat keras adalah...", options: ["A. Ular dan Buaya", "B. Siput dan Kura-kura", "C. Cumi-cumi dan Gurita", "D. Landak dan Kalajengking"], a: "B" },
@@ -128,17 +117,29 @@
                 { id: 50, q: "Lapisan atmosfer paling dekat dengan permukaan bumi adalah...", options: ["A. Stratosfer", "B. Mesosfer", "C. Troposfer", "D. Eksosfer"], a: "C" }
             ];
 
-            // Submit handler
+            // 3. FUNGSI LOGIKA (SUBMIT & DOWNLOAD)
+            const downloadExcel = () => {
+                if (dbLogs.length === 0) return alert("Belum ada data.");
+                const dataEksport = dbLogs.map(log => ({
+                    'Nama': log.nama, 'Kelas': log.kelas, 'No HP': log.nomorHp,
+                    'Skor': log.skor, 'Status': log.skor >= 75 ? 'LULUS' : 'GAGAL',
+                    'Waktu': log.waktu_teks
+                }));
+                const ws = XLSX.utils.json_to_sheet(dataEksport);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Rekap");
+                XLSX.writeFile(wb, `Rekap_Ujian_OSN.xlsx`);
+            };
+
             const handleSubmit = useCallback(async () => {
                 if (isSubmitting || !user) return;
                 setIsSubmitting(true);
                 try {
-                    let correctCount = 0;
-                    questions.forEach(q => { if (answers[q.id] === q.a) correctCount++; });
-                    const finalScore = Math.round((correctCount / questions.length) * 100);
+                    let correct = 0;
+                    questions.forEach(q => { if (answers[q.id] === q.a) correct++; });
+                    const finalScore = Math.round((correct / questions.length) * 100);
                     setScore(finalScore);
 
-                    // Menyimpan data sesuai dengan Firebase Rules yang Anda miliki
                     await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('rekap_nilai').add({
                         userId: user.uid,
                         nama: name,
@@ -146,171 +147,149 @@
                         nomorHp: phone,
                         skor: finalScore,
                         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                        waktu_teks: new Date().toLocaleString('id-ID'),
-                        status: finalScore >= 75 ? "LULUS" : "TIDAK LULUS"
+                        waktu_teks: new Date().toLocaleString('id-ID')
                     });
                     setScreen('result');
                 } catch (err) {
-                    console.error("Firestore Save Error:", err);
-                    alert("Gagal mengirim jawaban. Pastikan internet aktif dan Anonymous Auth di Firebase sudah di-Enable.");
+                    alert("Koneksi gagal! Silakan screenshot hasil ini.");
                     setScreen('result');
-                } finally {
-                    setIsSubmitting(false);
-                }
-            }, [user, name, studentClass, phone, answers, isSubmitting, appId]);
+                } finally { setIsSubmitting(false); }
+            }, [user, name, studentClass, phone, answers, appId]);
 
-            // Data listener for Admin
             useEffect(() => {
                 if (!user || !isAdmin) return;
-                
-                const unsubscribe = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('rekap_nilai')
-                    .onSnapshot((snapshot) => {
-                        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setDbLogs(data.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
-                    }, (error) => {
-                        console.error("Firestore Listen Error:", error);
+                const unsub = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('rekap_nilai')
+                    .onSnapshot(snap => {
+                        const items = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                        setDbLogs(items.sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
                     });
-                return () => unsubscribe();
-            }, [user, isAdmin, appId]);
+                return () => unsub();
+            }, [user, isAdmin]);
 
-            // Timer logic
             useEffect(() => {
                 if (screen === 'exam' && timeLeft > 0) {
-                    const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
-                    return () => clearInterval(timer);
-                } else if (timeLeft === 0 && screen === 'exam') {
-                    handleSubmit();
-                }
+                    const t = setInterval(() => setTimeLeft(p => p - 1), 1000);
+                    return () => clearInterval(t);
+                } else if (timeLeft === 0 && screen === 'exam') { handleSubmit(); }
             }, [screen, timeLeft, handleSubmit]);
 
-            const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
-
-            // --- UI RENDER LOGIC ---
-            if (screen === 'welcome') {
-                return (
-                    <div className="min-h-screen bg-emerald-50 flex items-center justify-center p-4">
-                        <div className="bg-white p-8 sm:p-12 rounded-[2.5rem] shadow-2xl w-full max-w-md border-b-8 border-emerald-600 animate-fade">
-                            <h1 className="text-3xl font-black text-slate-800 text-center uppercase tracking-tighter leading-tight mb-2 italic">Seleksi OSN IPA</h1>
-                            <p className="text-center text-emerald-600 font-bold text-xs uppercase tracking-widest mb-10">SDN 002 Sangatta Utara</p>
-                            <div className="space-y-4">
-                                <input value={name} onChange={e => setName(e.target.value)} placeholder="Nama Lengkap" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-emerald-500 outline-none font-bold" />
-                                <input value={studentClass} onChange={e => setStudentClass(e.target.value)} placeholder="Kelas (Contoh: 6A)" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-emerald-500 outline-none font-bold" />
-                                <input value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ''))} placeholder="Nomor HP" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-emerald-500 outline-none font-bold" />
-                                <button onClick={() => name && studentClass && phone ? setScreen('exam') : alert('Lengkapi data!')} className="w-full bg-emerald-600 text-white font-black py-5 rounded-2xl shadow-xl hover:bg-emerald-700 transition-all uppercase tracking-widest">Mulai Ujian</button>
-                                <button onClick={() => setScreen('admin_login')} className="w-full text-slate-400 font-bold text-[10px] uppercase tracking-widest pt-4 underline">Admin Panel</button>
-                            </div>
+            // 4. UI SCREENS
+            if (screen === 'welcome') return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md border-b-8 border-emerald-600 animate-fade text-center">
+                        <h1 className="text-3xl font-black italic mb-2 uppercase">Seleksi OSN IPA</h1>
+                        <p className="text-emerald-600 font-bold text-xs uppercase tracking-widest mb-10">SDN 002 Sangatta Utara</p>
+                        <div className="space-y-4 text-left">
+                            <input value={name} onChange={e=>setName(e.target.value)} placeholder="Nama Lengkap" className="w-full p-4 bg-slate-50 border-2 rounded-2xl outline-none font-bold focus:border-emerald-500" />
+                            <input value={studentClass} onChange={e=>setStudentClass(e.target.value)} placeholder="Kelas" className="w-full p-4 bg-slate-50 border-2 rounded-2xl outline-none font-bold focus:border-emerald-500" />
+                            <input value={phone} onChange={e=>setPhone(e.target.value.replace(/\D/g,''))} placeholder="Nomor HP Aktif" className="w-full p-4 bg-slate-50 border-2 rounded-2xl outline-none font-bold focus:border-emerald-500" />
+                            <button onClick={() => name && studentClass && phone ? setScreen('exam') : alert('Lengkapi data!')} className="w-full bg-emerald-600 text-white font-black py-5 rounded-2xl shadow-xl uppercase tracking-widest hover:bg-emerald-700">Mulai Ujian</button>
+                            <button onClick={() => setScreen('admin_login')} className="w-full text-slate-400 font-bold text-[10px] uppercase pt-4 underline">Admin Panel</button>
                         </div>
                     </div>
-                );
-            }
+                </div>
+            );
 
-            if (screen === 'admin_login') {
-                return (
-                    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
-                        <div className="bg-white p-10 rounded-3xl w-full max-w-sm text-center animate-fade">
-                            <h2 className="text-2xl font-black mb-8 text-slate-800 uppercase">Admin PIN</h2>
-                            <input type="password" placeholder="****" className="w-full p-4 bg-slate-100 rounded-xl text-center text-2xl font-black tracking-widest mb-4 outline-none" value={adminPin} onChange={e => setAdminPin(e.target.value)} />
-                            <button onClick={() => adminPin === '1995' ? (setIsAdmin(true), setScreen('admin_panel')) : alert('PIN Salah!')} className="w-full bg-emerald-600 text-white py-4 rounded-xl font-black">LOGIN</button>
-                            <button onClick={() => setScreen('welcome')} className="mt-4 text-slate-400 font-bold text-xs">KEMBALI</button>
-                        </div>
+            if (screen === 'admin_login') return (
+                <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
+                    <div className="bg-white p-10 rounded-3xl w-full max-w-sm text-center">
+                        <h2 className="text-2xl font-black mb-8 uppercase text-slate-800">Admin PIN</h2>
+                        <input type="password" value={adminPin} onChange={e=>setAdminPin(e.target.value)} placeholder="****" className="w-full p-4 bg-slate-100 rounded-xl text-center text-2xl font-black mb-4 outline-none" />
+                        <button onClick={() => adminPin === '1995' ? (setIsAdmin(true), setScreen('admin_panel')) : alert('PIN Salah!')} className="w-full bg-emerald-600 text-white py-4 rounded-xl font-black">LOGIN</button>
+                        <button onClick={()=>setScreen('welcome')} className="mt-4 text-slate-400 font-bold text-xs">KEMBALI</button>
                     </div>
-                );
-            }
+                </div>
+            );
 
-            if (screen === 'exam') {
-                return (
-                    <div className="min-h-screen bg-slate-50 flex flex-col pb-40 animate-fade">
-                        <header className="sticky top-0 bg-white/80 backdrop-blur-md border-b p-4 px-6 flex justify-between items-center z-50">
-                            <div className={`px-4 py-2 rounded-xl text-white font-black text-xl ${timeLeft < 300 ? 'bg-red-500 animate-pulse' : 'bg-slate-900'}`}>{formatTime(timeLeft)}</div>
-                            <div className="text-right">
-                                <p className="text-xs font-black text-slate-400">{name}</p>
-                                <p className="text-sm font-black text-emerald-600">Progress: {Object.keys(answers).length}/50</p>
-                            </div>
-                        </header>
-                        <main className="max-w-3xl mx-auto w-full p-4 pt-10 space-y-8">
-                            {questions.map((q, idx) => (
-                                <div key={q.id} className="bg-white p-6 sm:p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
-                                    <div className="flex gap-4 mb-8">
-                                        <span className="w-12 h-12 flex-shrink-0 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center font-black text-xl">{idx + 1}</span>
-                                        <p className="font-bold text-lg text-slate-800 pt-2">{q.q}</p>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-3 sm:pl-16">
-                                        {q.options.map(opt => (
-                                            <button key={opt} onClick={() => setAnswers({...answers, [q.id]: opt[0]})}
-                                                className={`text-left p-5 rounded-2xl border-2 transition-all font-bold ${answers[q.id] === opt[0] ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-50 bg-slate-50 text-slate-600'}`}>
-                                                {opt}
-                                            </button>
-                                        ))}
-                                    </div>
+            if (screen === 'exam') return (
+                <div className="min-h-screen bg-slate-50 flex flex-col pb-40 animate-fade">
+                    <header className="sticky top-0 bg-white/90 backdrop-blur-md border-b p-4 px-6 flex justify-between items-center z-50">
+                        <div className={`px-4 py-2 rounded-xl text-white font-black text-xl ${timeLeft < 300 ? 'bg-red-500 animate-pulse' : 'bg-slate-900'}`}>
+                            {Math.floor(timeLeft/60)}:{(timeLeft%60).toString().padStart(2,'0')}
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xs font-black text-slate-400 uppercase">{name}</p>
+                            <p className="text-sm font-black text-emerald-600">{Object.keys(answers).length}/50 Terjawab</p>
+                        </div>
+                    </header>
+                    <main className="max-w-3xl mx-auto w-full p-4 pt-10 space-y-8">
+                        {questions.map((q, idx) => (
+                            <div key={q.id} className="bg-white p-6 sm:p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
+                                <div className="flex gap-4 mb-8">
+                                    <span className="w-12 h-12 flex-shrink-0 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center font-black text-xl">{idx + 1}</span>
+                                    <p className="font-bold text-lg text-slate-800 pt-2">{q.q}</p>
                                 </div>
-                            ))}
-                        </main>
-                        <footer className="fixed bottom-0 left-0 right-0 p-6 bg-white/95 backdrop-blur-md border-t flex justify-center z-50">
-                            <button onClick={() => setShowConfirm(true)} className="w-full max-w-lg bg-emerald-600 text-white font-black py-5 rounded-2xl shadow-xl text-lg uppercase">Kirim Jawaban</button>
-                        </footer>
-                        {showConfirm && (
-                            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-6">
-                                <div className="bg-white p-8 rounded-[2rem] max-w-sm w-full text-center">
-                                    <h3 className="font-black text-xl mb-4">Selesai Ujian?</h3>
-                                    <div className="flex gap-4">
-                                        <button onClick={() => setShowConfirm(false)} className="flex-1 p-4 bg-slate-100 rounded-xl font-bold">Batal</button>
-                                        <button onClick={handleSubmit} className="flex-1 p-4 bg-emerald-600 text-white rounded-xl font-black">Ya, Selesai</button>
-                                    </div>
+                                <div className="grid grid-cols-1 gap-3 sm:pl-16">
+                                    {q.options.map(opt => (
+                                        <button key={opt} onClick={() => setAnswers({...answers, [q.id]: opt[0]})}
+                                            className={`text-left p-5 rounded-2xl border-2 transition-all font-bold ${answers[q.id] === opt[0] ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-50 bg-slate-50 text-slate-600'}`}>
+                                            {opt}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
-                        )}
-                        {isSubmitting && <div className="fixed inset-0 bg-white/90 z-[100] flex items-center justify-center font-black animate-pulse uppercase text-xs">Menyimpan Nilai...</div>}
-                    </div>
-                );
-            }
-
-            if (screen === 'result') {
-                return (
-                    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center animate-fade">
-                        <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-xl ${score >= 75 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d={score >= 75 ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12"} /></svg>
-                        </div>
-                        <h1 className={`text-3xl font-black mb-1 ${score >= 75 ? 'text-green-600' : 'text-red-600'}`}>{score >= 75 ? 'LULUS SELEKSI!' : 'BELUM LULUS'}</h1>
-                        <p className="text-slate-400 font-bold mb-10 text-xs uppercase tracking-widest">{name} • {studentClass}</p>
-                        <div className="bg-emerald-50 p-12 rounded-[4rem] shadow-inner mb-10 border border-emerald-100 px-20">
-                            <div className="text-[8rem] font-black text-slate-900 leading-none tracking-tighter">{score}</div>
-                            <p className="text-[10px] font-black text-slate-400 mt-4 uppercase tracking-[0.5em]">Total Skor</p>
-                        </div>
-                        <button onClick={() => window.location.reload()} className="bg-slate-900 text-white px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-widest">Selesai & Keluar</button>
-                    </div>
-                );
-            }
-
-            if (screen === 'admin_panel') {
-                return (
-                    <div className="min-h-screen bg-slate-100 p-4 sm:p-10 animate-fade">
-                        <div className="max-w-6xl mx-auto bg-white rounded-[2.5rem] shadow-2xl overflow-hidden">
-                            <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
-                                <div><h2 className="text-2xl font-black uppercase italic">Rekap Nilai</h2><p className="text-emerald-400 text-[10px] font-black tracking-widest uppercase">Admin SDN 002 SANGATTA UTARA</p></div>
-                                <button onClick={() => window.location.reload()} className="bg-red-500 px-6 py-3 rounded-xl font-black text-xs uppercase">Logout</button>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left">
-                                    <thead><tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase border-b tracking-widest"><th className="px-8 py-6">Nama</th><th className="px-8 py-6">Kelas</th><th className="px-8 py-6 text-center">Skor</th><th className="px-8 py-6">Status</th><th className="px-8 py-6">Waktu</th></tr></thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {dbLogs.map(log => (
-                                            <tr key={log.id} className="hover:bg-emerald-50">
-                                                <td className="px-8 py-6 font-black text-slate-800 text-sm uppercase">{log.nama}</td>
-                                                <td className="px-8 py-6 font-bold text-slate-500 text-xs uppercase">{log.kelas}</td>
-                                                <td className="px-8 py-6 text-center text-xl font-black">{log.skor}</td>
-                                                <td className="px-8 py-6">
-                                                    <span className={`px-4 py-2 rounded-lg font-black text-[10px] tracking-widest ${log.skor >= 75 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{log.skor >= 75 ? 'LULUS' : 'TIDAK LULUS'}</span>
-                                                </td>
-                                                <td className="px-8 py-6 text-[10px] font-bold text-slate-400 uppercase">{log.waktu_teks}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                        ))}
+                    </main>
+                    <footer className="fixed bottom-0 left-0 right-0 p-6 bg-white/95 border-t flex justify-center z-50">
+                        <button onClick={() => setShowConfirm(true)} className="w-full max-w-lg bg-emerald-600 text-white font-black py-5 rounded-2xl shadow-xl uppercase">Kirim Semua Jawaban</button>
+                    </footer>
+                    {showConfirm && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-6 text-center">
+                            <div className="bg-white p-8 rounded-[2rem] max-w-sm w-full">
+                                <h3 className="font-black text-xl mb-4">Udah Yakin?</h3>
+                                <div className="flex gap-4">
+                                    <button onClick={() => setShowConfirm(false)} className="flex-1 p-4 bg-slate-100 rounded-xl font-bold">Cek Lagi</button>
+                                    <button onClick={handleSubmit} className="flex-1 p-4 bg-emerald-600 text-white rounded-xl font-black">Yakin!</button>
+                                </div>
                             </div>
                         </div>
+                    )}
+                </div>
+            );
+
+            if (screen === 'result') return (
+                <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center animate-fade">
+                    <h1 className={`text-4xl font-black mb-1 ${score >= 75 ? 'text-green-600' : 'text-red-600'}`}>{score >= 75 ? 'LULUS!' : 'Gagal'}</h1>
+                    <p className="text-slate-400 font-bold mb-10 text-xs uppercase tracking-widest">{name} • {studentClass}</p>
+                    <div className="bg-emerald-50 p-12 rounded-[4rem] border-2 border-emerald-100 px-20 shadow-inner mb-10">
+                        <div className="text-[8rem] font-black text-slate-900 leading-none">{score}</div>
+                        <p className="text-[10px] font-black text-slate-400 mt-4 uppercase tracking-[0.5em]">Skor Anda</p>
                     </div>
-                );
-            }
+                    <button onClick={() => window.location.reload()} className="bg-slate-900 text-white px-10 py-5 rounded-2xl font-black text-xs uppercase">Selesai</button>
+                </div>
+            );
+
+            if (screen === 'admin_panel') return (
+                <div className="min-h-screen bg-slate-100 p-4 sm:p-10 animate-fade">
+                    <div className="max-w-6xl mx-auto bg-white rounded-[2.5rem] shadow-2xl overflow-hidden">
+                        <div className="p-8 bg-slate-900 text-white flex flex-col sm:row justify-between items-center gap-4">
+                            <div><h2 className="text-2xl font-black uppercase italic">Rekap Nilai</h2><p className="text-emerald-400 text-[10px] font-black uppercase">SDN 002 Sangatta Utara</p></div>
+                            <div className="flex gap-3">
+                                <button onClick={downloadExcel} className="bg-emerald-500 px-6 py-3 rounded-xl font-black text-xs flex items-center gap-2">Download Excel</button>
+                                <button onClick={()=>window.location.reload()} className="bg-red-500 px-6 py-3 rounded-xl font-black text-xs">Logout</button>
+                            </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase border-b tracking-widest">
+                                    <tr><th className="px-8 py-6">Nama</th><th className="px-8 py-6">Kelas</th><th className="px-8 py-6">No HP</th><th className="px-8 py-6 text-center">Skor</th><th className="px-8 py-6">Waktu</th></tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {dbLogs.map(log => (
+                                        <tr key={log.id} className="hover:bg-emerald-50 transition-colors">
+                                            <td className="px-8 py-6 font-black text-slate-800 text-sm uppercase">{log.nama}</td>
+                                            <td className="px-8 py-6 font-bold text-slate-500 text-xs">{log.kelas}</td>
+                                            <td className="px-8 py-6 font-bold text-emerald-600 text-xs">{log.nomorHp}</td>
+                                            <td className="px-8 py-6 text-center text-xl font-black">{log.skor}</td>
+                                            <td className="px-8 py-6 text-[10px] font-bold text-slate-400">{log.waktu_teks}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
