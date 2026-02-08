@@ -22,7 +22,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // Konfigurasi Firebase yang telah diperbarui
+        // --- KONFIGURASI FIREBASE TERBARU ANDA ---
         const firebaseConfig = {
             apiKey: "AIzaSyDbLPrLuG_ZFGQkrrVMvFcUukG4j-3y18Y",
             authDomain: "ujian-osn.firebaseapp.com",
@@ -33,7 +33,6 @@
             measurementId: "G-SFN3MQ6WLN"
         };
 
-        const initialToken = window.__initial_auth_token;
         const appId = 'seleksi-osn-sdn002';
 
         // Initialize Firebase
@@ -62,11 +61,7 @@
             useEffect(() => {
                 const initAuth = async () => {
                     try {
-                        if (initialToken) {
-                            await auth.signInWithCustomToken(initialToken);
-                        } else {
-                            await auth.signInAnonymously();
-                        }
+                        await auth.signInAnonymously();
                     } catch (err) {
                         console.error("Auth Error:", err);
                     }
@@ -143,7 +138,7 @@
                     const finalScore = Math.round((correctCount / questions.length) * 100);
                     setScore(finalScore);
 
-                    // Menyimpan data ke Firestore
+                    // Menyimpan data sesuai dengan Firebase Rules yang Anda miliki
                     await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('rekap_nilai').add({
                         userId: user.uid,
                         nama: name,
@@ -157,6 +152,7 @@
                     setScreen('result');
                 } catch (err) {
                     console.error("Firestore Save Error:", err);
+                    alert("Gagal mengirim jawaban. Pastikan internet aktif dan Anonymous Auth di Firebase sudah di-Enable.");
                     setScreen('result');
                 } finally {
                     setIsSubmitting(false);
